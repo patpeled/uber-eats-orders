@@ -1,0 +1,12 @@
+{
+  "slackChannel": "#lunch-orders",
+  "restaurantUrl": "https://www.ubereats.com/de/store/short-stories/STORE_ID",
+  "deliveryAddress": "Jopestrasse 4, 72072 Tübingen, Deutschland",
+  "paymentMethodLabel": "Visa •••• 4242",
+  "taxProfileLabel": "Business",
+  "timeWindow": {
+    "start": "16:00",
+    "end": "11:30",
+    "note": "start = previous day 4pm, end = current day 11:30am"
+  }
+}

@@ -14,3 +14,6 @@ desktop.ini
 # Sensitive / local-only
 *.env
 *.local
+
+# Uber Eats skill — per-user config (contains personal Slack channel, payment method, address)
+.claude/skills/uber-eats-order/config.json
