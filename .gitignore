@@ -9,6 +9,7 @@ desktop.ini
 .claude/shell-snapshots/
 .claude/telemetry/
 .claude/session-env/
+.claude/settings.local.json
 
 # Sensitive / local-only
 *.env
