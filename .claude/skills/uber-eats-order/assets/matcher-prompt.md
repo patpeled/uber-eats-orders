@@ -34,8 +34,16 @@ Confidence rules:
   items, partial name match, or the item may not be on the menu).
 - If **no plausible match exists**, set `menuMatch` to `null`.
 
-Resolution policy (used by SKILL.md Step 4):
+---
 
-- Always use the highest-confidence match — regardless of score. No inline user confirmation.
-- Items with `menuMatch: null` are excluded from the cart and surfaced in the
-  Step 7 handoff message's "items excluded" warning.
+## Implementer notes (not part of the LLM prompt)
+
+These notes are for the skill implementer, not the LLM running the prompt above.
+
+- **Resolution policy (v0):** Always take the highest-confidence match — regardless
+  of score. No inline user confirmation; the user reviews the final cart at the
+  Step 7 handoff.
+- **Excluded items:** Items with `menuMatch: null` are dropped from the cart and
+  added to the `excludedItems` list surfaced in the Step 7 handoff message.
+- **Confidence threshold (0.85)** is hardcoded for v0; will move to
+  `config.matchConfidenceThreshold` in v1 (see TICKET-006).

@@ -67,8 +67,11 @@ This mirrors the payment method and tax profile pattern: pick from addresses
 already saved in the user's Uber Eats account (no free-form typing, no
 autocomplete handling required).
 
-- Open `https://www.ubereats.com/de/manage_delivery/addresses` in Chrome (or
-  navigate via account menu → Addresses).
+- Navigate to the saved-addresses page in Uber Eats. The reliable path is via
+  the account menu: click your avatar/initials top-right → Account → Addresses.
+  (Direct URLs like `ubereats.com/manage_delivery/addresses` or
+  `ubereats.com/<region>/manage_delivery/addresses` work in some regions but
+  may redirect — prefer the account-menu navigation for cross-region safety.)
 - Read all saved addresses listed on the page.
 - Present the list to the user with the label Uber Eats shows for each entry
   (e.g. `Home`, `Work`, or the address itself if no label):
@@ -109,8 +112,11 @@ Save: the selected payment method label string.
 ### 5. taxProfileLabel
 
 Tax profile discovery has two paths — try the primary, fall back to the secondary
-if the primary doesn't load the expected list (this is unverified for German
-Uber accounts and may redirect):
+if the primary doesn't load the expected list (the primary URL is unverified for
+German Uber accounts and may redirect).
+
+> **Prerequisite for the secondary path:** `restaurantUrl` (Field 2) must already
+> be set. If it isn't, complete Field 2 first or skip Field 5 until after.
 
 **Primary path — global tax profiles portal:**
 - Open `https://riders.uber.com/tax-profiles` in Chrome.
@@ -120,13 +126,24 @@ Uber accounts and may redirect):
   user's expectation, fall back to the secondary path.
 
 **Secondary path — discovery via Uber Eats checkout:**
-- Open the user's configured `restaurantUrl` in Chrome.
-- Add any single cheap item to the cart (a temporary placeholder).
-- Proceed to checkout.
-- Locate the "Invoice Details" / "Rechnungsdetails" section and open it.
-- Read the available tax profiles from the dropdown.
-- Remove the placeholder item from the cart before continuing (leave no
-  side-effect on the user's cart).
+1. **Pre-check existing cart state.** Open `config.restaurantUrl` and inspect the
+   cart indicator. If the cart is **not empty** (regardless of restaurant), halt
+   and ask the user:
+   > "The tax-profile fallback path needs to temporarily add an item to your
+   > cart and remove it. Your cart currently has items that will be touched.
+   > Proceed and let me restore the cart afterwards, or abort? (proceed / abort)"
+   On `abort`, stop. On `proceed`, snapshot the existing cart contents so they
+   can be restored after discovery.
+2. **Pick a placeholder item without required options** (e.g. a plain drink).
+   If no such item exists on this menu (every item has required option groups),
+   tell the user and ask them to pick one interactively — reuse the
+   required-options handling from `SKILL.md` Step 5 to satisfy the options before
+   adding.
+3. **Add the placeholder** and proceed to checkout.
+4. Locate the "Invoice Details" section and read the available tax profiles from
+   the dropdown.
+5. **Restore cart state:** remove the placeholder, then re-add any items from the
+   pre-check snapshot. Confirm the cart matches the snapshot before continuing.
 
 **Present the list (either path):**
 > "I found these tax profiles on your account:
@@ -146,9 +163,12 @@ Save: the selected profile label string.
 
 Show the default and ask whether to keep or override:
 > "The default order window is: previous day 16:00 → current day 11:30.
-> Reply `default` to keep the default, or paste new values as `HH:MM HH:MM` (start end)."
+> Reply `default` to keep, or paste two times separated by a space
+> (start end) — for example: `16:00 11:30`."
 
-If the user provides new values, validate they are valid `HH:MM` strings.
+Accept formats: two `HH:MM` strings separated by a space, comma, dash, or arrow
+(e.g. `16:00 11:30`, `16:00, 11:30`, `16:00-11:30`, `16:00 → 11:30`). Reject anything
+else and re-ask.
 
 Save: `{ "start": "HH:MM", "end": "HH:MM" }`.
 

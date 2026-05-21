@@ -16,4 +16,5 @@ desktop.ini
 *.local
 
 # Uber Eats skill — per-user config (contains personal Slack channel, payment method, address)
+# Note: config.json lives at the skill root by convention; assets/config.example.json is the committed template.
 .claude/skills/uber-eats-order/config.json

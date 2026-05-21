@@ -17,9 +17,9 @@ so the user can review and confirm before checkout.
 2. Reads orders from the configured Slack channel (within the configured time window)
 3. Parses free-form order messages into structured items
 4. Scrapes the configured restaurant menu from Uber Eats
-5. Matches order items to menu items, asking for confirmation on ambiguous matches
-6. Builds the cart with all confirmed items
-7. Configures delivery address, payment method, and tax profile
+5. Matches order items to menu items using best-guess matching (no inline confirmation — final review happens at checkout)
+6. Builds the cart with all matched items; prompts the user on cross-restaurant cart conflicts, items with required options, or per-item add failures
+7. Configures delivery address, payment method, and tax profile (tax profile is treated as a hard requirement)
 8. Stops at checkout and hands the URL to the user
 
 **Skill file:** `.claude/skills/uber-eats-order/SKILL.md`
@@ -45,7 +45,7 @@ setup before proceeding. No manual setup needed.
 - Changing the delivery address
 - First-time setup (also triggered automatically by `/uber-eats-order`)
 
-**Skill file:** `.claude/skills/uber-eats-order/onboarding.md`
+**Skill file:** `.claude/skills/uber-eats-onboard/SKILL.md`
 
 ---
 
@@ -55,20 +55,34 @@ Your personal config is stored at `.claude/skills/uber-eats-order/config.json`.
 This file is gitignored and never committed — it contains your personal Slack channel,
 payment method, and delivery address.
 
-See `config.example.json` in the same directory for the expected format.
+See `assets/config.example.json` in the same skill directory for the expected format.
 
 ---
 
 ## Project Structure
 
+Both skills follow the [agentskills.io specification](https://agentskills.io/specification)
+directory conventions (`assets/` for templates and static resources, `references/` for
+on-demand documentation).
+
 ```
 .claude/
   skills/
     uber-eats-order/
-      SKILL.md            ← main skill procedure (read by Claude when running /uber-eats-order)
-      onboarding.md       ← setup/update procedure (read by Claude when running /uber-eats-onboard)
-      config.example.json ← template showing all required config fields
-      config.json         ← your personal config (gitignored, created by onboarding)
+      SKILL.md            ← main /uber-eats-order procedure
+      config.json         ← your personal config (gitignored; created by onboarding)
+      assets/
+        config.example.json  ← config template
+        parser-prompt.md     ← Step 2 LLM prompt
+        matcher-prompt.md    ← Step 4 LLM prompt
+        handoff-output.md    ← Step 7 user-facing output template
+      references/
+        ONBOARDING.md     ← detailed setup/update procedure
+    uber-eats-onboard/
+      SKILL.md            ← /uber-eats-onboard entry; reads its own references/ONBOARDING.md
+      references/
+        ONBOARDING.md     ← intentional duplicate of the one in uber-eats-order/
+                            (keeps each skill self-contained per spec)
 CLAUDE.md                 ← this file
 ```
 

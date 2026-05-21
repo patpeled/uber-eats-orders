@@ -33,4 +33,7 @@ Rules:
 - `"Chicken salad bitte"` → `item: "Chicken salad"`, `bitte` is filler, ignore it
 - Comma-separated items in one message → separate entries
 - If item name is ambiguous or unclear, set `confidence` below 0.7
+  *(Note: vestigial in v0 — the matcher in Step 4 always picks its own highest-scoring
+  menu match regardless of parser confidence. The field is kept for v1, where
+  scheduled execution will use it to gate background ambiguity prompts.)*
 - Preserve item names as written (don't translate or normalise)

@@ -1,7 +1,8 @@
 ---
 name: uber-eats-order
 description: Read lunch orders from a configured Slack channel via Chrome browser automation, parse free-form German/English messages into structured items, match them to a configured Uber Eats restaurant's menu using best-guess matching, build a cart, configure delivery/payment/tax, and halt at checkout for manual confirmation. Use when the user says "place lunch order", "uber eats order", "order lunch", or runs /uber-eats-order.
-version: 0.1.0
+metadata:
+  version: "0.1.0"
 ---
 
 # Skill: uber-eats-order
@@ -21,7 +22,7 @@ the user to place the order manually.
 2. **File missing → full onboarding:**
    Tell the user:
    > "No config found. Let's set up the skill before placing your first order."
-   Follow the full procedure in `onboarding.md`, then continue to Step 1.
+   Follow the full procedure in `references/ONBOARDING.md`, then continue to Step 1.
 
 3. **File exists → validate fields:**
    Load `config.json` and check that all required fields are present and non-empty:
@@ -29,7 +30,7 @@ the user to place the order manually.
    `taxProfileLabel`, `timeWindow.start`, `timeWindow.end`.
 
    - If one or more fields are missing/empty, list them to the user and collect only those
-     fields using the matching section(s) of `onboarding.md`. Then continue to Step 1.
+     fields using the matching section(s) of `references/ONBOARDING.md`. Then continue to Step 1.
    - If all fields are present, proceed directly to Step 1.
 
 ---
@@ -68,7 +69,7 @@ the user to place the order manually.
 
 **Goal:** Convert raw Slack messages into a structured order list.
 
-Use the prompt in [`templates/parser-prompt.md`](templates/parser-prompt.md) as
+Use the prompt in [`assets/parser-prompt.md`](assets/parser-prompt.md) as
 the system instruction for an LLM reasoning step. Feed in the list of messages
 collected in Step 1 (`[{author, text}]`) and capture the JSON array returned.
 
@@ -99,7 +100,7 @@ the user reviews the cart at the final handoff in Step 7).
 
 **Goal:** Map each parsed order item to the closest item on the restaurant menu.
 
-Use the prompt in [`templates/matcher-prompt.md`](templates/matcher-prompt.md)
+Use the prompt in [`assets/matcher-prompt.md`](assets/matcher-prompt.md)
 as the system instruction for an LLM reasoning step. Feed in:
 
 - the scraped menu from Step 3 (`[{name, price}]`)
@@ -188,20 +189,16 @@ Capture the JSON array returned.
 
 **Goal:** Stop the skill and give the user everything needed to place the order.
 
-1. Capture the current browser URL (the checkout page URL).
-2. Read the cart summary from the page: item names, quantities, subtotal, delivery fee,
-   total.
-3. Output to the user:
-
 Render the message using the template in
-[`templates/handoff-output.md`](templates/handoff-output.md), substituting:
+[`assets/handoff-output.md`](assets/handoff-output.md). The template self-documents
+all placeholders and substitution rules; in summary you'll need:
 
-- `<assignee>`, `<menu item name>`, `<qty>`, `<price>` for each cart line
-- `<subtotal>`, `<delivery fee>`, `<total>` as Uber renders them
-  (including the currency symbol — do not hardcode one)
-- `<deliveryAddressLabel>`, `<paymentMethodLabel>`, `<taxProfileLabel>` from config
-- `<resolved address shown by Uber>` from the checkout page
-- `<checkout URL>` from the current browser URL
-- The "items excluded" block is omitted entirely if no items were excluded
+- The current browser URL (checkout page) and the cart summary scraped from the page
+  (item names, quantities, prices in whatever currency Uber displays — do not
+  hardcode a symbol).
+- The configured labels (`deliveryAddressLabel`, `paymentMethodLabel`,
+  `taxProfileLabel`) and the resolved address Uber renders next to the saved
+  address label.
+- The `excludedItems` list built in Step 4 (omit the block entirely if empty).
 
-The skill stops here. The user clicks "Place Order" themselves.
+The skill stops after rendering. The user clicks "Place Order" themselves.
