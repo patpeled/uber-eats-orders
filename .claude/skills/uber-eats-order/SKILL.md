@@ -1,3 +1,9 @@
+---
+name: uber-eats-order
+description: Read lunch orders from a configured Slack channel via Chrome browser automation, parse free-form German/English messages into structured items, match them to a configured Uber Eats restaurant's menu using best-guess matching, build a cart, configure delivery/payment/tax, and halt at checkout for manual confirmation. Use when the user says "place lunch order", "uber eats order", "order lunch", or runs /uber-eats-order.
+version: 0.1.0
+---
+
 # Skill: uber-eats-order
 
 Triggered by `/uber-eats-order` in Claude Code.
@@ -19,7 +25,7 @@ the user to place the order manually.
 
 3. **File exists → validate fields:**
    Load `config.json` and check that all required fields are present and non-empty:
-   `slackChannel`, `restaurantUrl`, `deliveryAddress`, `paymentMethodLabel`,
+   `slackChannel`, `restaurantUrl`, `deliveryAddressLabel`, `paymentMethodLabel`,
    `taxProfileLabel`, `timeWindow.start`, `timeWindow.end`.
 
    - If one or more fields are missing/empty, list them to the user and collect only those
@@ -44,9 +50,14 @@ the user to place the order manually.
    - Wait for user confirmation before continuing.
 3. Navigate to the configured channel using Slack's search or sidebar.
 4. Scroll up to load messages going back to `timeWindow.start` on the previous day.
-   Keep scrolling until messages older than that timestamp are visible.
+   Keep scrolling until messages older than that timestamp are visible. After
+   scrolling appears complete, wait 1–2 seconds and re-check that the oldest
+   visible message timestamp is genuinely before the window start. If Slack is
+   still loading older messages, retry the scroll once before concluding.
 5. Extract all messages within the window: capture `{author, timestamp, text}` for each.
-6. Ignore system messages, bot messages, and reactions — plain user text only.
+6. Ignore system/join/leave/topic-change messages and pure emoji reactions. Do NOT
+   skip messages from Slack Workflow output or other integration bots that may carry
+   real order text — if a "bot" message contains plausible order content, include it.
 7. If no messages are found in the window, tell the user:
    > "No orders found in #channel-name between [start] and [end]. Nothing to order."
    Stop cleanly.
@@ -57,48 +68,12 @@ the user to place the order manually.
 
 **Goal:** Convert raw Slack messages into a structured order list.
 
-**LLM prompt (execute as a reasoning step):**
+Use the prompt in [`templates/parser-prompt.md`](templates/parser-prompt.md) as
+the system instruction for an LLM reasoning step. Feed in the list of messages
+collected in Step 1 (`[{author, text}]`) and capture the JSON array returned.
 
-```
-You are parsing lunch order messages from a Slack channel.
-Messages are in German, English, or a mix of both.
-
-Input: a list of Slack messages, each with {author, text}.
-
-For each message, extract one or more order items. Output a JSON array:
-[
-  {
-    "rawText": "original message text",
-    "author": "Slack display name",
-    "item": "food/drink item name (cleaned, in original language)",
-    "quantity": 1,
-    "assignee": "name of person the item is for (use author if not specified)",
-    "confidence": 0.0–1.0
-  }
-]
-
-Rules:
-- "2x Chicken Bowl" → quantity: 2
-- "Chicken Bowl für Patrick" → assignee: "Patrick"
-- "Chicken Bowl für Patrick und Sarah" → two entries, one for each, quantity 1 each
-- "Chicken salad bitte" → item: "Chicken salad", bitte is filler, ignore it
-- Comma-separated items in one message → separate entries
-- If item name is ambiguous or unclear, set confidence below 0.7
-- Preserve item names as written (don't translate or normalise)
-```
-
-After parsing, show the user a summary table:
-
-```
-Parsed orders:
-  Patrick     | Chicken Bowl         | qty 1
-  Sarah       | Caesar Salad         | qty 1
-  (author)    | Sparkling Water      | qty 2
-  ...
-Proceed? (yes / fix)
-```
-
-If the user says "fix", ask what to change before continuing.
+After parsing, proceed directly to Step 3 (no inline user confirmation —
+the user reviews the cart at the final handoff in Step 7).
 
 ---
 
@@ -124,54 +99,24 @@ If the user says "fix", ask what to change before continuing.
 
 **Goal:** Map each parsed order item to the closest item on the restaurant menu.
 
-**LLM prompt (execute as a reasoning step):**
+Use the prompt in [`templates/matcher-prompt.md`](templates/matcher-prompt.md)
+as the system instruction for an LLM reasoning step. Feed in:
 
-```
-You are matching food order requests to items on a restaurant menu.
+- the scraped menu from Step 3 (`[{name, price}]`)
+- the parsed orders from Step 2 (`[{item, quantity, assignee}]`)
 
-Menu: [list of {name, price} from Step 3]
-Orders: [list of {item, quantity, assignee} from Step 2]
+Capture the JSON array returned.
 
-For each order item, find the best matching menu entry. Output:
-[
-  {
-    "orderedItem": "as parsed",
-    "assignee": "name",
-    "quantity": N,
-    "menuMatch": "exact menu item name",
-    "matchConfidence": 0.0–1.0,
-    "alternatives": ["next best match 1", "next best match 2"]
-  }
-]
+**Best-guess resolution (no inline confirmation):**
 
-A match is high-confidence (≥0.85) when the names are clearly the same item.
-A match is low-confidence (<0.85) when there is ambiguity (e.g. multiple similar items,
-partial name match, or the item may not be on the menu).
-If no plausible match exists, set menuMatch to null.
-```
-
-**Ambiguity resolution (batch):**
-
-Collect all low-confidence matches and any null matches, then present them all at once:
-
-```
-Some items need confirmation:
-
-1. "Chicken salad" (Patrick) — did you mean?
-   a) Chicken Caesar Salad — €12.50
-   b) Thai Chicken Salad — €13.00
-   c) Grilled Chicken Bowl — €11.80
-   [type 1a, 1b, 1c, or skip]
-
-2. "Sparkling Water" (Sarah) — did you mean?
-   a) San Pellegrino 0.5L — €3.50
-   b) Laufen Still 0.5L — €2.80
-   [type 2a, 2b, or skip]
-```
-
-- User responses update the match for that item.
-- Items typed "skip" are excluded from the cart with a warning at the end.
-- Items left unanswered fall back to the highest-confidence alternative automatically.
+- For every order item, always use the highest-confidence match — regardless of
+  whether the score is above or below any threshold. Do not ask the user
+  mid-flow.
+- For items where `menuMatch` is `null` (no plausible match at all), exclude
+  them from the cart and add them to the `excludedItems` list to surface in
+  Step 7's handoff message.
+- The user reviews and corrects (if needed) at the final checkout in Step 7
+  before placing the order.
 
 ---
 
@@ -182,16 +127,27 @@ Some items need confirmation:
 **Procedure:**
 1. On the restaurant page, check for an existing cart indicator (item count badge or
    "View cart" button with items).
-   - If the cart is not empty, ask the user:
-     > "The cart already has items. Clear it and start fresh, or append? (clear / append / abort)"
-   - If abort, stop cleanly.
-   - If clear, remove existing items before proceeding.
+   - **Same restaurant:** if the cart belongs to the configured `restaurantUrl`, ask:
+     > "The cart already has items from this restaurant. Clear and start fresh, append, or abort? (clear / append / abort)"
+   - **Different restaurant:** if the cart belongs to a different restaurant (Uber Eats only allows one restaurant per cart), only `clear` and `abort` are valid. Ask:
+     > "The cart has items from a different restaurant. Clearing is required to proceed. Clear and continue, or abort? (clear / abort)"
+   - On `abort`, stop cleanly.
+   - On `clear`, remove existing items before proceeding.
 2. For each confirmed order item (in any order):
    a. Find the item on the restaurant page by name.
    b. Click it to open the item detail.
    c. If quantity > 1, set the quantity before adding.
-   d. Click "Add to order" / "In den Warenkorb" (handle German UI).
+   d. Check whether the "Add to order" button is enabled.
+      - **Disabled:** the item has required option groups (size, sides, drink choice,
+        etc.). List the required option groups to the user, present the available
+        choices for each, ask the user to pick, apply the selections, then continue.
+      - **Enabled:** click "Add to order".
    e. Confirm the item appears in the cart count.
+   f. **On failure** (item sold out, page error, button still disabled after retries,
+      or any unexpected state), ask the user how to proceed:
+      > "Couldn't add `<item>` (`<reason>`). Skip it / retry / abort?"
+      Continue per the user's choice. If the user aborts, stop cleanly and report
+      the partial state.
 3. After all items are added, open the cart and verify the item list and quantities match
    the order. Report any discrepancies to the user before proceeding.
 
@@ -203,15 +159,28 @@ Some items need confirmation:
 
 **Procedure:**
 1. Proceed to checkout (click "View cart" → "Checkout" or equivalent).
-2. **Delivery address:** Locate the address field. If it shows the wrong address, clear it
-   and enter `config.deliveryAddress`. Confirm Uber Eats resolves it without errors.
+2. **Delivery address:** Open the address selector at checkout (usually clicking the
+   currently-shown address opens a dropdown of the user's saved addresses). Select the
+   entry whose label matches `config.deliveryAddressLabel`. Confirm the selection took
+   effect — the checkout should now show that address. Do NOT type an address; only
+   pick from the saved-address dropdown.
 3. **Payment method:** In the payment section, scan all listed options. Select the one
    whose label matches `config.paymentMethodLabel`. Explicitly verify Uber Cash / Uber
    Credits is NOT selected — if it is, deselect it.
-4. **Tax profile (Invoice Details):** Locate the "Invoice Details" or "Rechnungsdetails"
-   section on the checkout page. Select the profile matching `config.taxProfileLabel`.
-   If the section is not visible, note this to the user (it may not be available for all
-   accounts/regions).
+4. **Tax profile (Invoice Details):** Locate the "Invoice Details" section on the
+   checkout page (English UI assumed — see CLAUDE.md requirements). Select the profile
+   matching `config.taxProfileLabel`.
+   - **If the Invoice Details section is not visible**, treat this as a hard error
+     (the user configured a tax profile and the order would otherwise lack it). Halt
+     and ask the user explicitly:
+     > "The Invoice Details section isn't available on this checkout page, so the
+     > configured tax profile (`<taxProfileLabel>`) can't be applied. Proceed without
+     > a tax profile, or abort? (proceed / abort)"
+     - On `abort`, stop cleanly without proceeding to handoff.
+     - On `proceed`, continue and surface the missing-tax-profile warning in the
+       Step 7 handoff.
+   - **If the section is visible but the configured profile is not in the list**,
+     halt with the same hard-error prompt and let the user decide.
 
 ---
 
@@ -224,24 +193,15 @@ Some items need confirmation:
    total.
 3. Output to the user:
 
-```
-✅ Order ready for review.
+Render the message using the template in
+[`templates/handoff-output.md`](templates/handoff-output.md), substituting:
 
-Items in cart:
-  Patrick     | Chicken Caesar Salad  | ×1 | €12.50
-  Sarah       | San Pellegrino 0.5L   | ×1 | €3.50
-  ...
-
-Subtotal: €XX.XX   Delivery: €X.XX   Total: €XX.XX
-
-Delivery to: Jopestrasse 4, 72072 Tübingen
-Payment:     Visa •••• 4242
-Tax profile: Business — Acme GmbH
-
-⚠️  Items excluded (no match found):
-  - "mystery dish" (Klaus) — could not be matched to any menu item
-
-👉 Review and place your order: [checkout URL]
-```
+- `<assignee>`, `<menu item name>`, `<qty>`, `<price>` for each cart line
+- `<subtotal>`, `<delivery fee>`, `<total>` as Uber renders them
+  (including the currency symbol — do not hardcode one)
+- `<deliveryAddressLabel>`, `<paymentMethodLabel>`, `<taxProfileLabel>` from config
+- `<resolved address shown by Uber>` from the checkout page
+- `<checkout URL>` from the current browser URL
+- The "items excluded" block is omitted entirely if no items were excluded
 
 The skill stops here. The user clicks "Place Order" themselves.

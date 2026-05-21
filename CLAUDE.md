@@ -79,3 +79,17 @@ CLAUDE.md                 ← this file
 - Chrome must be open and logged in to both `app.slack.com` and `ubereats.com`
   before running `/uber-eats-order`. The skill will prompt you to log in if needed.
 - The `mcp__Claude_in_Chrome` MCP tool must be active in your Claude Code session.
+  See the Claude in Chrome MCP installation docs to enable it if it's not already
+  showing in `/doctor` or your settings.
+- **Uber Eats UI language:** the skill currently assumes the Uber Eats web UI is set
+  to English. Switch it via Uber Eats settings (Account → Settings → Language → English)
+  before running. Localized variants are planned for v1 (see TICKET-006).
+
+## Known Limitations (v0)
+
+- **Monday lookback gap:** the skill reads messages from `timeWindow.start` on the
+  *previous calendar day* to `timeWindow.end` on the *current day*. When run on a
+  Monday, "previous day" = Sunday, and any orders posted on Friday afternoon (before
+  the 16:00 window start) will be missed. For now, handle Mondays manually or
+  temporarily widen the window via `/uber-eats-onboard`. A multi-day lookback is
+  planned for v1.

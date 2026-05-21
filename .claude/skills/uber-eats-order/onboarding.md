@@ -10,7 +10,7 @@ to `/uber-eats-order` when `config.json` is missing or incomplete.
 - **First time:** Triggered automatically by `/uber-eats-order` if `config.json` is absent.
 - **Updating config:** Run `/uber-eats-onboard` explicitly at any time.
 - **Partial update:** If `config.json` exists, load and display current values, then ask:
-  > "Which field would you like to update? (slackChannel / restaurantUrl / deliveryAddress /
+  > "Which field would you like to update? (slackChannel / restaurantUrl / deliveryAddressLabel /
   > paymentMethodLabel / taxProfileLabel / timeWindow / all)"
   Only re-collect the chosen field(s); keep all others unchanged.
 
@@ -61,20 +61,28 @@ Save: the URL exactly as provided.
 
 ---
 
-### 3. deliveryAddress
+### 3. deliveryAddressLabel
 
-Ask:
-> "What is the delivery address for orders?
-> (e.g. `Jopestrasse 4, 72072 Tübingen`)"
+This mirrors the payment method and tax profile pattern: pick from addresses
+already saved in the user's Uber Eats account (no free-form typing, no
+autocomplete handling required).
 
-After the user provides the address:
-- On the Uber Eats restaurant page already open, locate the delivery address field
-  (usually at the top of the page or in checkout).
-- Enter the address and confirm Uber Eats resolves it to a valid delivery location
-  (i.e., no "address not found" or "outside delivery zone" error).
-- If unresolvable, tell the user and ask them to re-enter.
+- Open `https://www.ubereats.com/de/manage_delivery/addresses` in Chrome (or
+  navigate via account menu → Addresses).
+- Read all saved addresses listed on the page.
+- Present the list to the user with the label Uber Eats shows for each entry
+  (e.g. `Home`, `Work`, or the address itself if no label):
+  > "I found these saved addresses on your account:
+  >   1. Work — Jopestrasse 4, 72072 Tübingen
+  >   2. Home — Beispielstrasse 12, 70173 Stuttgart
+  > Which should be used for orders? (enter the number)"
+- Record the exact label as displayed on the page.
 
-Save: the address string as provided.
+**No saved addresses on the account:** Halt and tell the user:
+> "No saved addresses found. Please add one in your Uber Eats account at
+> ubereats.com → Account → Addresses, then re-run /uber-eats-onboard."
+
+Save: the selected address label string.
 
 ---
 
@@ -90,19 +98,45 @@ Save: the address string as provided.
   > Which should be used for orders? (enter the number)"
 - Record the exact label as displayed on the page.
 
+**No saved payment methods (excluding Uber Cash/Credits):** Halt and tell the user:
+> "No suitable payment methods found. Please add a card or other non-credit method
+> at ubereats.com/payment, then re-run /uber-eats-onboard."
+
 Save: the selected payment method label string.
 
 ---
 
 ### 5. taxProfileLabel
 
+Tax profile discovery has two paths — try the primary, fall back to the secondary
+if the primary doesn't load the expected list (this is unverified for German
+Uber accounts and may redirect):
+
+**Primary path — global tax profiles portal:**
 - Open `https://riders.uber.com/tax-profiles` in Chrome.
-- Read the available tax profiles (Personal, Business, or named profiles).
-- Present the list to the user:
-  > "I found these tax profiles on your account:
-  >   1. Personal
-  >   2. Business — Acme GmbH
-  > Which should be applied to orders? (enter the number)"
+- If the page loads with a list of tax profiles, read them and skip to "Present
+  the list" below.
+- If the page redirects, 404s, or shows an empty state that doesn't match the
+  user's expectation, fall back to the secondary path.
+
+**Secondary path — discovery via Uber Eats checkout:**
+- Open the user's configured `restaurantUrl` in Chrome.
+- Add any single cheap item to the cart (a temporary placeholder).
+- Proceed to checkout.
+- Locate the "Invoice Details" / "Rechnungsdetails" section and open it.
+- Read the available tax profiles from the dropdown.
+- Remove the placeholder item from the cart before continuing (leave no
+  side-effect on the user's cart).
+
+**Present the list (either path):**
+> "I found these tax profiles on your account:
+>   1. Personal
+>   2. Business — Acme GmbH
+> Which should be applied to orders? (enter the number)"
+
+**No saved tax profiles exist:** Halt and direct the user:
+> "No tax profiles found. Please create one at riders.uber.com/tax-profiles
+> or via your Uber account settings, then re-run /uber-eats-onboard."
 
 Save: the selected profile label string.
 
@@ -112,7 +146,7 @@ Save: the selected profile label string.
 
 Show the default and ask whether to keep or override:
 > "The default order window is: previous day 16:00 → current day 11:30.
-> Press Enter to keep the default, or type new values as `HH:MM HH:MM` (start end)."
+> Reply `default` to keep the default, or paste new values as `HH:MM HH:MM` (start end)."
 
 If the user provides new values, validate they are valid `HH:MM` strings.
 
@@ -127,11 +161,11 @@ using the validated values. Show the user the final saved config for confirmatio
 
 > "Config saved. Here's what will be used:
 >
->   Channel:        #lunch-orders
->   Restaurant:     https://www.ubereats.com/...
->   Delivery to:    Jopestrasse 4, 72072 Tübingen
->   Payment:        Visa •••• 4242
->   Tax profile:    Business — Acme GmbH
->   Order window:   16:00 prev day → 11:30 today
+>   Channel:           <slackChannel>
+>   Restaurant:        <restaurantUrl>
+>   Delivery address:  <deliveryAddressLabel>
+>   Payment:           <paymentMethodLabel>
+>   Tax profile:       <taxProfileLabel>
+>   Order window:      <timeWindow.start> prev day → <timeWindow.end> today
 >
 > Run `/uber-eats-order` to place your first order, or `/uber-eats-onboard` to update any field."
