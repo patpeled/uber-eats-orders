@@ -1,0 +1,11 @@
+{
+  "slackChannel": "#lunch-orders",
+  "restaurantUrl": "https://www.ubereats.com/<region>/store/<restaurant-slug>/<store-id>",
+  "deliveryAddressLabel": "Work",
+  "paymentMethodLabel": "Visa •••• 4242",
+  "taxProfileLabel": "Business",
+  "timeWindow": {
+    "start": "16:00",
+    "end": "11:30"
+  }
+}
